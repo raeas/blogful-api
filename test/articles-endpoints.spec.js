@@ -1,8 +1,9 @@
-const { expect } = require('chai')
+//const { expect } = require('chai')
 const knex = require('knex')
 const supertest = require('supertest')
 const app = require('../src/app')
 const { makeArticlesArray, makeMaliciousArticle } = require('./articles.fixtures')
+const { makeUsersArray } = require('./users.fixtures')
 
 describe('Articles Endpoints', function() {
   let db
@@ -17,11 +18,12 @@ describe('Articles Endpoints', function() {
 
   after('disconnect from db', () => db.destroy())
 
-  before('clean the table', () => db('blogful_articles').truncate())
+  before('clean the table', () => db.raw('TRUNCATE blogful_articles, blogful_users, blogful_comments RESTART IDENTITY CASCADE'))
 
-  afterEach('cleanup', () => db('blogful_articles').truncate())
-
+  afterEach('cleanup', () => db.raw('TRUNCATE blogful_articles, blogful_users, blogful_comments RESTART IDENTITY CASCADE'))
+//1 - DESCRIBE articles endpoint
   describe(`GET /api/articles`, () => {
+//1A - CONTEXT to articles endpoint - given there are no articles in the database
     context(`Given no articles`, () => {
       it(`responds with 200 and an empty list`, () => {
         return supertest(app)
@@ -29,14 +31,20 @@ describe('Articles Endpoints', function() {
           .expect(200, [])
         })
       })
-
+//1A - CONTEXT to articles endpoint - given there are articles in the database
     context('Given there are articles in the database', () => {
       const testArticles = makeArticlesArray()
+      const testUsers = makeUsersArray()
 
       beforeEach('insert articles', () => {
         return db
-          .into('blogful_articles')
-          .insert(testArticles)
+          .into('blogful_users')
+          .insert(testUsers)
+          .then(() => {
+            return db
+              .into('blogful_articles')
+              .insert(testArticles)
+          })
       })
 
       it('responds with 200 and all of the articles', () => {
@@ -45,14 +53,20 @@ describe('Articles Endpoints', function() {
         .expect(200, testArticles)
       })
     })
-
+//1C - CONTEXT to article endpoint - Malicious Article
     context(`Given an XSS attack article`, () => {
       const { maliciousArticle, expectedArticle } = makeMaliciousArticle()
+      const testUsers = makeUsersArray()
 
       beforeEach('insert malicious article', () => {
         return db
-          .into('blogful_articles')
-          .insert([ maliciousArticle ])
+          .into('blogful_users')
+          .insert(testUsers)
+          .then(() => {
+            return db
+            .into('blogful_articles')
+            .insert([ maliciousArticle ])
+          })
       })
 
       it('removes XSS attach content', () => {
@@ -66,8 +80,9 @@ describe('Articles Endpoints', function() {
       })
     })
   })
-    
+//2 DESCRIBE - articles by id    
   describe(`GET /api/articles/:article_id`, () => {
+//2A CONTEXT - to articles by id - given no article id in db
     context(`Given no articles`, () => {
       it(`responds with 404`, () => {
         const articleId = 123456
@@ -76,14 +91,20 @@ describe('Articles Endpoints', function() {
           .expect(404, { error: { message: `Article doesn't exist` } })
        })
     })
-
+//2B CONTEXT - to articles by id - given there are articles by id in db
     context('Given there are articles in the database', () => {
       const testArticles = makeArticlesArray()
+      const testUsers = makeUsersArray()
 
     beforeEach('insert articles', () => {
       return db
-        .into('blogful_articles')
-        .insert(testArticles)
+        .into('blogful_users')
+        .insert(testUsers)
+        .then(() => {
+          return db
+            .into('blogful_articles')
+            .insert(testArticles)
+        })
     })
 
     it('responds with 200 and the specified article', () => {
@@ -94,14 +115,20 @@ describe('Articles Endpoints', function() {
         .expect(200, expectedArticle)
       })
     })
-
+//2C CONTEXT - to articles by id - given there are malicious articles in db
     context(`Given an XSS attack article`, () => {
       const { maliciousArticle, expectedArticle } = makeMaliciousArticle()
+      const testUsers = makeUsersArray()
 
         beforeEach('insert malicious article', () => {
           return db
-            .into('blogful_articles')
-            .insert([ maliciousArticle ])
+            .into('blogful_users')
+            .insert(testUsers)
+            .then(() => {
+              return db
+                .into('blogful_articles')
+                .insert([ maliciousArticle ])
+            })
         })
       
         it('removes XSS attack content', () => {
@@ -115,8 +142,16 @@ describe('Articles Endpoints', function() {
           })
         })
   })
-
+//3 DESCRIBE - POST articles by id  
   describe(`POST /api/articles`, () => {
+    const testUsers = makeUsersArray()
+
+    beforeEach('insert malicious article', () => {
+      return db
+        .into('blogful_users')
+        .insert(testUsers)
+    })
+
     it(`creates an article, responding with 201 and the new article`,  function() {
       this.retries(3)
       const newArticle = {
@@ -178,9 +213,10 @@ describe('Articles Endpoints', function() {
       })
     })
   })
-
+//4 DESCRIBE - DELETE articles by id  
   describe(`DELETE /api/articles/:article_id`, () => {
-    context(`Given no articles`, () => {
+//4A CONTEXT - given there are no article by id to delete
+    context(`4A Given no articles`, () => {
       it(`responds with 404`, () => {
         const articleId = 123456
         return supertest(app)
@@ -188,14 +224,20 @@ describe('Articles Endpoints', function() {
           .expect(404, { error: { message: `Article doesn't exist` } })
       })
     })
-
+//4B CONTEXT - given there are articles by id to delete
     context('Given there are articles in the database', () => {
       const testArticles = makeArticlesArray()
+      const testUsers = makeUsersArray()
 
       beforeEach('insert articles', () => {
         return db
-          .into('blogful_articles')
-          .insert(testArticles)
+          .into('blogful_users')
+          .insert(testUsers)
+          .then(() => {
+            return db
+              .into('blogful_articles')
+              .insert(testArticles)
+          })
       })
     
       it('responds with 204 and removes the article', () => {
@@ -212,9 +254,10 @@ describe('Articles Endpoints', function() {
       })
     })
   })
-
-  describe(`PATCH /api/articles/:article_id`, () => {
-    context(`Given no articles`, () => {
+//5 DESCRIBE - PATCH articles by id 
+  describe(`5 PATCH /api/articles/:article_id`, () => {
+//5A CONTEXT given there are no articles by id
+    context(`5A Given no articles`, () => {
       it(`responds with 404`, () => {
         const articleId = 123456
         return supertest(app)
@@ -222,13 +265,20 @@ describe('Articles Endpoints', function() {
           .expect(404, { error: { message: `Article doesn't exist` } })
       })
     })
+//5B CONTEXT given there are articles in the database
     context('Given there are articles in the database', () => {
       const testArticles = makeArticlesArray()
+      const testUsers = makeUsersArray()
       
       beforeEach('insert articles', () => {
         return db
-          .into('blogful_articles')
-          .insert(testArticles)
+          .into('blogful_users')
+          .insert(testUsers)
+          .then (() => {
+            return db
+              .into('blogful_articles')
+              .insert(testArticles)
+          })
       })
       
       it('responds with 204 and updates the article', () => {
@@ -289,5 +339,3 @@ describe('Articles Endpoints', function() {
     })
   })
 })
-
-//started failing when I removed .only() from line 182 and 70.
